@@ -8,6 +8,6 @@ No install required.
 Just press START.
 
 Live:
-https://yagyuranzou.github.io/tezos-baker-engine/
+https://yagyuranzou.github.io/tezos-baker-engine-advanced-live/
 
 LIVE DATA: tzkt.io
