@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>TEZOS BAKER ENGINE ADVANCED LIVE</title>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+body{background:#000;color:#00ff66;font-family:'Press Start 2P',monospace;padding:20px;font-size:10px}
+.panel{border:1px solid #00aa44;padding:12px;margin-bottom:12px}
+.bar{height:6px;background:#003300;margin:4px 0}
+.fill{height:100%;background:#00ff66;width:0%}
+.numline{letter-spacing:2px;margin:4px 0}
+button{background:#000;color:#00ff66;border:1px solid #00ff66;padding:6px;margin-right:6px}
+</style>
+</head>
+<body>
+<h1>TEZOS BAKER ENGINE ADVANCED LIVE</h1>
+
+<div class="panel">
+<button onclick="start()">START</button>
+<button onclick="stop()">STOP</button>
+</div>
+
+<div class="panel">
+<div id="viz"></div>
+<div id="clusters"></div>
+<div id="numbers"></div>
+</div>
+
+<script>
+let ctx,interval;
+let state={activity:0,level:0,entropy:0};
+const API="https://api.tzkt.io/v1";
+
+const scale=[261.63,293.66,329.63,392.00,440.00,523.25];
+
+const bufferSize=32;
+let buffer={A:[],B:[],C:[],D:[]};
+
+async function fetchTezos(){
+ try{
+  const h=await fetch(API+"/head").then(r=>r.json());
+  const ops=await fetch(API+"/operations/endorsements?limit=20").then(r=>r.json());
+  return{activity:ops.length,level:h.level||0,entropy:Math.random()};
+ }catch{return state}
+}
+
+function smooth(p,n,a=0.3){return p*(1-a)+n*a}
+
+function pickNote(offset=0){
+ let idx=Math.floor((state.level+state.activity+offset)%scale.length);
+ return scale[idx];
+}
+
+function playVoice(freq,type,duration,volume){
+ let o=ctx.createOscillator();
+ let g=ctx.createGain();
+
+ o.type=type;
+ o.frequency.value=freq;
+ g.gain.value=volume;
+
+ o.connect(g);
+ g.connect(ctx.destination);
+
+ o.start();
+ o.stop(ctx.currentTime+duration);
+}
+
+function tickAudio(){
+ let base=pickNote();
+
+ // lead
+ playVoice(base,"square",0.12,0.12);
+
+ // harmony pattern
+ if(state.activity % 2 < 1){
+  playVoice(pickNote(1)*1.5,"triangle",0.18,0.05);
+ }
+
+ // bass pulse
+ playVoice(base/2,"square",0.2,0.08);
+
+ // arpeggio (block-driven)
+ if(Math.floor(state.level)%4===0){
+  playVoice(base*2,"square",0.08,0.05);
+ }
+
+ // hi-hat noise
+ if(Math.random()<state.entropy){
+  playVoice(1000+Math.random()*500,"square",0.04,0.03);
+ }
+}
+
+function bar(v,m){
+ let pct=Math.min(100,(v/m)*100);
+ return `<div class='bar'><div class='fill' style='width:${pct}%'></div></div>`;
+}
+
+function push(k,v){
+ buffer[k].push(v);
+ if(buffer[k].length>bufferSize) buffer[k].shift();
+}
+
+function renderViz(){
+ document.getElementById("viz").innerHTML=
+ "activity:"+state.activity.toFixed(1)+bar(state.activity,80)+
+ "level:"+state.level.toFixed(0)+bar(state.level%1000,1000)+
+ "entropy:"+state.entropy.toFixed(2)+bar(state.entropy,1);
+}
+
+function renderClusters(){
+ document.getElementById("clusters").innerHTML=
+ "TRACKS<br>"+
+ "A (lead)"+bar(60,100)+
+ "B (harm)"+bar(40,100)+
+ "C (bass)"+bar(70,100)+
+ "D (noise)"+bar(state.entropy*100,100);
+}
+
+function renderNumbers(){
+ push('A',state.level);
+ push('B',state.activity);
+ push('C',state.entropy*10);
+ push('D',state.level*0.5);
+
+ let html="";
+ Object.keys(buffer).forEach(k=>{
+  html+=`<div class='numline'>${k} `+
+  buffer[k].map(v=>Math.floor(v).toString().slice(-1)).join('')+
+  "</div>";
+ });
+ document.getElementById("numbers").innerHTML=html;
+}
+
+async function tick(){
+ let d=await fetchTezos();
+ state.activity=smooth(state.activity,d.activity);
+ state.level=smooth(state.level,d.level);
+ state.entropy=smooth(state.entropy,d.entropy);
+
+ tickAudio();
+ renderViz();
+ renderClusters();
+ renderNumbers();
+}
+
+function start(){
+ ctx=new (window.AudioContext||window.webkitAudioContext)();
+ interval=setInterval(tick,220);
+}
+
+function stop(){
+ clearInterval(interval);
+}
+</script>
+</body>
+</html>
